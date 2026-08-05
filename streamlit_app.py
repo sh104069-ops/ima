@@ -1,4 +1,12 @@
+
+import base64
+import io
+import math
+import struct
+import wave
+
 import streamlit as st
+import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title="通信トラブル解決クエスト",
@@ -92,6 +100,94 @@ st.markdown(
 )
 
 # ------------------------------------------------------------------
+# BGM生成（外部音源を使わず、その場で簡易な音を合成する）
+# ------------------------------------------------------------------
+NOTE_FREQ = {
+    "C3": 130.81, "D3": 146.83, "E3": 164.81, "F3": 174.61, "G3": 196.00,
+    "A3": 220.00, "Bb3": 233.08, "B3": 246.94,
+    "C4": 261.63, "D4": 293.66, "E4": 329.63, "F4": 349.23, "G4": 392.00,
+    "A4": 440.00, "Bb4": 466.16, "B4": 493.88,
+    "C5": 523.25, "D5": 587.33, "E5": 659.25, "F5": 698.46, "G5": 783.99,
+    "A5": 880.00,
+}
+
+
+@st.cache_data(show_spinner=False)
+def synth_bgm(notes, wave_type="square", volume=0.16, sample_rate=22050):
+    """簡易チップチューン風のBGMをその場で合成し、WAV(base64)として返す。"""
+    samples = []
+    fade = max(1, int(sample_rate * 0.01))
+    for note, dur in notes:
+        freq = 0.0 if note is None else NOTE_FREQ[note]
+        n = int(sample_rate * dur)
+        for i in range(n):
+            if freq == 0.0:
+                s = 0.0
+            else:
+                t = i / sample_rate
+                if wave_type == "square":
+                    s = volume if math.sin(2 * math.pi * freq * t) >= 0 else -volume
+                else:
+                    s = volume * math.sin(2 * math.pi * freq * t)
+                if i < fade:
+                    s *= i / fade
+                elif i > n - fade:
+                    s *= (n - i) / fade
+            samples.append(s)
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        frames = bytearray()
+        for s in samples:
+            v = int(max(-1.0, min(1.0, s)) * 32767)
+            frames += struct.pack("<h", v)
+        wf.writeframes(bytes(frames))
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+# 探偵編：少し緊張感のある短調のフレーズ（ゆっくりめ）
+DETECTIVE_NOTES = [
+    ("D3", 0.35), ("F3", 0.35), ("G3", 0.35), ("F3", 0.35),
+    ("D3", 0.35), (None, 0.2), ("A3", 0.35), ("D4", 0.7),
+    ("C4", 0.35), ("Bb3", 0.35), ("A3", 0.35), ("F3", 0.35),
+    ("G3", 0.35), (None, 0.2), ("D3", 0.9),
+]
+
+# RPG編：冒険感のある長調のフレーズ（テンポ良く）
+RPG_NOTES = [
+    ("C4", 0.18), ("E4", 0.18), ("G4", 0.18), ("C5", 0.18),
+    ("G4", 0.18), ("E4", 0.18), ("C4", 0.18), (None, 0.1),
+    ("D4", 0.18), ("F4", 0.18), ("A4", 0.18), ("D5", 0.18),
+    ("A4", 0.18), ("F4", 0.18), ("D4", 0.18), (None, 0.1),
+    ("E4", 0.18), ("G4", 0.18), ("C5", 0.18), ("E5", 0.36),
+]
+
+# ホーム画面：落ち着いたイントロ的フレーズ
+HOME_NOTES = [
+    ("C4", 0.5), ("E4", 0.5), ("G4", 0.5), ("C5", 1.0), (None, 0.5),
+]
+
+
+def render_bgm(mode):
+    if mode == "detective":
+        notes, wave_type = DETECTIVE_NOTES, "square"
+    elif mode == "rpg":
+        notes, wave_type = RPG_NOTES, "square"
+    else:
+        notes, wave_type = HOME_NOTES, "sine"
+    track_b64 = synth_bgm(tuple(notes), wave_type=wave_type)
+    html = f"""
+    <audio autoplay loop>
+      <source src="data:audio/wav;base64,{track_b64}" type="audio/wav">
+    </audio>
+    """
+    components.html(html, height=0)
+
+
+# ------------------------------------------------------------------
 # データ定義：探偵編
 # 各ステージで「調査アクション」を1つずつ実行（＝ボタンを押す）すると、
 # 端末の出力のような結果が表示される。すべて調べたうえで、怪しい手がかりを
@@ -146,6 +242,7 @@ DETECTIVE_STAGES = [
             "見た目上の違和感であっても、通信の仕組みには関与しないため、"
             "探偵としては「事件と無関係な情報」として除外する判断力も重要になる。"
         ),
+        "keywords": ["ケーブル", "電源", "ランプ", "Wi-Fi", "無線", "スイッチ", "物理", "接続", "刺さ", "挿"],
     },
     {
         "no": "②",
@@ -193,6 +290,7 @@ DETECTIVE_STAGES = [
             "根本的にはDHCPサーバー（多くの場合ルーター内蔵）との通信がうまくいっていないことを"
             "示している。サブネットマスクやCPU使用率、解像度設定は、この症状とは直接関係がない。"
         ),
+        "keywords": ["IP", "アドレス", "169.254", "APIPA", "DHCP", "ゲートウェイ", "取得"],
     },
     {
         "no": "③",
@@ -240,6 +338,7 @@ DETECTIVE_STAGES = [
             "つながっているポートなど）に原因が絞り込める。このように「他の端末と比較する」ことは、"
             "問題を個体差なのか全体障害なのか切り分けるうえで欠かせない探偵の技術である。"
         ),
+        "keywords": ["ping", "タイムアウト", "ゲートウェイ", "ルーター", "応答", "届", "経路"],
     },
     {
         "no": "④",
@@ -288,6 +387,7 @@ DETECTIVE_STAGES = [
             "あると推測できる。このように「影響範囲の広さ」を確認することは、ハード・ソフトの"
             "切り分けと並んで、原因を特定する上で非常に重要な視点である。"
         ),
+        "keywords": ["外部", "8.8.8.8", "プロバイダ", "回線", "境界", "複数", "教室", "上流", "範囲"],
     },
     {
         "no": "⑤",
@@ -341,6 +441,7 @@ DETECTIVE_STAGES = [
             "このように症状の「範囲」（全サイトがダメなのか、特定の1サイトだけなのか）を"
             "見極めることが、DNSの問題と相手サーバーの問題を切り分ける決め手になる。"
         ),
+        "keywords": ["DNS", "名前解決", "サーバー", "ドメイン", "IPアドレス", "変換"],
     },
 ]
 
@@ -623,10 +724,13 @@ def show_detective():
                 ss.det_feedback = ("warn", "選んだ根拠も記述してから確定しよう。")
             else:
                 correct = {i for i, c in enumerate(stage["clues"]) if c["suspicious"]}
-                if ss[judged_key] == correct:
+                selection_ok = ss[judged_key] == correct
+                keyword_ok = any(kw in reasoning for kw in stage.get("keywords", []))
+
+                if selection_ok and keyword_ok:
                     ss.det_cleared[stage_idx] = True
                     ss.det_feedback = ("ok", stage["explain"])
-                else:
+                elif not selection_ok:
                     missed = correct - ss[judged_key]
                     wrong = ss[judged_key] - correct
                     msg = "推理はまだ完全ではない。"
@@ -635,6 +739,14 @@ def show_detective():
                     if missed:
                         msg += f"　見落としている手がかりが{len(missed)}件ある。"
                     msg += "　現場をもう一度よく確認してみよう。"
+                    ss.det_feedback = ("ng", msg)
+                else:
+                    # 選択は正しいが、記述に関連語句が含まれていない
+                    sample = "、".join(stage.get("keywords", [])[:4])
+                    msg = (
+                        "選んだ手がかりは正しいが、記述の中に関連する語句が見つからなかった。"
+                        f"（例えば「{sample}」のような言葉を使って、根拠をもう少し具体的に書いてみよう。）"
+                    )
                     ss.det_feedback = ("ng", msg)
 
         if ss.det_feedback:
@@ -810,6 +922,12 @@ with st.sidebar:
     if st.button("🔄 進行状況をリセット"):
         reset_all()
         st.rerun()
+    st.divider()
+    st.checkbox("🎵 BGMを再生する", key="bgm_on")
+    st.caption("ブラウザの仕様上、初回はこのチェックを入れる操作が必要です。")
+
+if st.session_state.get("bgm_on"):
+    render_bgm(st.session_state.mode)
 
 if st.session_state.mode is None:
     show_home()
