@@ -25,6 +25,17 @@ st.markdown(
         margin-bottom: 1em;
         line-height: 1.75;
     }
+    .console-box {
+        background-color: #10151c;
+        color: #7CFC9A;
+        font-family: "Consolas", "Courier New", monospace;
+        border-radius: 8px;
+        padding: 0.8em 1em;
+        margin: 0.4em 0 1em 0;
+        white-space: pre-wrap;
+        line-height: 1.6;
+        font-size: 15px;
+    }
     .monster-box {
         background-color: #22203a;
         color: #f5f5f5;
@@ -34,12 +45,26 @@ st.markdown(
         margin-bottom: 1em;
         line-height: 1.75;
     }
-    .item-box {
-        background-color: #fffaf0;
-        border: 1px solid #e0c68a;
+    .explain-box {
+        background-color: #fff8ea;
+        border: 1px solid #e6c98a;
+        border-radius: 8px;
+        padding: 1em 1.2em;
+        margin-top: 0.6em;
+        line-height: 1.8;
+    }
+    .battle-log {
+        background-color: #0e0e16;
+        color: #e5e5e5;
+        font-family: "Consolas", "Courier New", monospace;
         border-radius: 8px;
         padding: 0.8em 1em;
         margin-bottom: 0.8em;
+        white-space: pre-wrap;
+        line-height: 1.6;
+        font-size: 15px;
+        max-height: 260px;
+        overflow-y: auto;
     }
     .clear-badge {
         display:inline-block;
@@ -68,8 +93,9 @@ st.markdown(
 
 # ------------------------------------------------------------------
 # データ定義：探偵編
-# 各ステージで「手がかり（観察事項）」を複数提示し、怪しいものを選ばせる。
-# 加えて根拠を記述させ、単純な一問一答にしない。
+# 各ステージで「調査アクション」を1つずつ実行（＝ボタンを押す）すると、
+# 端末の出力のような結果が表示される。すべて調べたうえで、怪しい手がかりを
+# 選び、根拠を記述する。単なる一覧提示ではなく「自分で調べに行く」体験にする。
 # ------------------------------------------------------------------
 DETECTIVE_STAGES = [
     {
@@ -77,91 +103,190 @@ DETECTIVE_STAGES = [
         "title": "ハード面の問題",
         "scene": (
             "情報の授業中、教室の数台のパソコンが突然インターネットに接続できなくなった。"
-            "現場を確認したところ、以下のような状況が見られた。"
+            "あなたは現場に到着した探偵として、まず物理的な部分から調査を始める。"
+            "気になる項目を選び、「調べる」ボタンを押して状況を確認していこう。"
         ),
         "clues": [
-            "LANケーブルのコネクタ部分が、奥まで刺さっていないように見える",
-            "ハブ（集線装置）の電源ランプが消灯している",
-            "デスクトップの壁紙が、いつもと違う画像になっている",
-            "ブラウザのブックマークの数がいつもより増えている",
-            "ノートパソコンのWi-FiスイッチがOFFの位置になっている",
+            {
+                "action": "LANケーブルのコネクタを目視で確認する",
+                "result": "コネクタのツメが浮いており、根元までしっかり刺さっていないことが分かった。",
+                "suspicious": True,
+            },
+            {
+                "action": "ハブ（集線装置）の電源ランプを確認する",
+                "result": "本来点灯しているはずのPOWERランプが消えている。",
+                "suspicious": True,
+            },
+            {
+                "action": "デスクトップの壁紙を確認する",
+                "result": "普段と違う画像に変わっているが、通信状態には影響しないはずだ。",
+                "suspicious": False,
+            },
+            {
+                "action": "ブラウザのブックマークを確認する",
+                "result": "ブックマークの数が増えているが、通信状態とは無関係に見える。",
+                "suspicious": False,
+            },
+            {
+                "action": "ノートPCのWi-Fiスイッチの位置を確認する",
+                "result": "本体側面のスイッチがOFFの位置に切り替わっていた。",
+                "suspicious": True,
+            },
         ],
-        "correct": {0, 1, 4},
-        "prompt": "この中から、通信トラブルの原因として怪しいと考えられるものをすべて選びなさい。",
+        "prompt": "調査の結果から、通信トラブルの原因として怪しいと考えられるものをすべて選びなさい。",
         "reasoning_prompt": "選んだ理由（なぜそれが怪しいと考えたか）を書きなさい。",
         "explain": (
-            "通信トラブルの調査は、まず「近い場所」＝ハード（物理的な部分）の確認から始めるのが基本である。"
-            "ケーブルの挿し込み、電源やランプの状態、Wi-Fiのスイッチなど、目視・手動で確認できる項目を優先的に洗い出す。"
-            "壁紙やブックマークの変化は通信障害とは直接関係がない。"
+            "通信トラブルの調査は、身近な場所＝ハード（物理層）の確認から始めるのが定石である。"
+            "LANケーブルは規格上、コネクタの「カチッ」という感触が出るまで奥に挿し込まないと"
+            "接触不良を起こし、通信が不安定になったり完全に切断されたりする。"
+            "また、ハブやルーターのPOWERランプが消えているのは、電源供給そのものが"
+            "止まっている強いサインであり、装置全体が機能していない可能性を示す。"
+            "Wi-FiスイッチのOFFも同様に、無線通信の入口が物理的に閉じられている状態であり、"
+            "ソフトウェアの設定をいくら調べても解決しない。一方、壁紙やブックマークの変化は"
+            "見た目上の違和感であっても、通信の仕組みには関与しないため、"
+            "探偵としては「事件と無関係な情報」として除外する判断力も重要になる。"
         ),
     },
     {
         "no": "②",
         "title": "ソフト面の問題",
         "scene": (
-            "ハード面を確認したが異常は見つからなかった。パソコンの状態を調べるため、"
-            "コマンドプロンプトでいくつかの情報を確認した。"
+            "ハード面を確認したが異常は見つからなかった。次はコマンドプロンプトを開き、"
+            "端末の設定情報を1つずつ調べていく。"
         ),
         "clues": [
-            "ipconfig の結果、IPアドレスが「169.254.x.x」と表示された",
-            "タスクマネージャーでCPU使用率が10%だった",
-            "ipconfig の結果、サブネットマスクが「255.255.255.0」と正常に表示された",
-            "デフォルトゲートウェイの欄が空欄になっている",
-            "ディスプレイの解像度が変更されている",
+            {
+                "action": "ipconfig を実行し、IPv4アドレスを確認する",
+                "result": "IPv4アドレスが「169.254.35.12」と表示された。",
+                "suspicious": True,
+            },
+            {
+                "action": "タスクマネージャーでCPU使用率を確認する",
+                "result": "CPU使用率はおよそ10%で、特に高負荷ではない。",
+                "suspicious": False,
+            },
+            {
+                "action": "ipconfig の結果でサブネットマスクを確認する",
+                "result": "「255.255.255.0」と、通常想定される値が表示された。",
+                "suspicious": False,
+            },
+            {
+                "action": "ipconfig の結果でデフォルトゲートウェイを確認する",
+                "result": "欄が空白のままで、何も表示されていない。",
+                "suspicious": True,
+            },
+            {
+                "action": "ディスプレイの解像度設定を確認する",
+                "result": "設定は変更されておらず、通常通りだった。",
+                "suspicious": False,
+            },
         ],
-        "correct": {0, 3},
-        "prompt": "この中から、IPアドレス取得に問題があると考えられる項目をすべて選びなさい。",
+        "prompt": "この中から、IPアドレスの取得に問題があると判断できる項目をすべて選びなさい。",
         "reasoning_prompt": "「169.254.x.x」という表示や、ゲートウェイが空欄であることが何を意味するか説明しなさい。",
         "explain": (
-            "「169.254.x.x」は、DHCPサーバーからIPアドレスを取得できなかった端末に自動で割り振られる"
-            "アドレス（APIPA）であり、正常にネットワークへ参加できていないサインである。"
-            "デフォルトゲートウェイが空欄であることも、正しい設定が行われていない可能性を示す。"
+            "「169.254.x.x」という範囲のアドレスはAPIPA（Automatic Private IP Addressing）と呼ばれ、"
+            "DHCPサーバーからIPアドレスを正しく取得できなかった端末に、Windowsなどが自動的に"
+            "割り当てる特殊なアドレスである。人間に例えるなら「本来の住所（DHCPが配る住所）が"
+            "もらえなかったので、とりあえず自分だけの仮の住所を名乗っている」状態であり、"
+            "この状態のままではLANの外に出ることはできない。あわせてデフォルトゲートウェイの"
+            "欄が空白であることも、出口となるルーターの情報が端末に伝わっていない証拠であり、"
+            "根本的にはDHCPサーバー（多くの場合ルーター内蔵）との通信がうまくいっていないことを"
+            "示している。サブネットマスクやCPU使用率、解像度設定は、この症状とは直接関係がない。"
         ),
     },
     {
         "no": "③",
         "title": "LAN環境の問題",
         "scene": (
-            "IPアドレスの設定自体は正常だった生徒のパソコンについて、さらに調査を進める。"
-            "デフォルトゲートウェイ（ルーター）に対して ping コマンドを実行した。"
+            "IPアドレスの設定自体は正常だった別の生徒のパソコンについて、さらに調査を進める。"
+            "コマンドプロンプトから、デフォルトゲートウェイ（ルーター）へ ping を送ってみよう。"
         ),
         "clues": [
-            "ping の結果、「応答時間 1ms」など複数回の応答が返ってきた",
-            "ping の結果、「宛先ホストに到達できません」と表示された",
-            "ping の結果、「要求がタイムアウトしました」が続けて表示された",
-            "ブラウザの起動に3秒かかった",
-            "キーボードの反応がわずかに遅い",
+            {
+                "action": "デフォルトゲートウェイへ ping を実行する（1回目）",
+                "result": "「要求がタイムアウトしました。」と表示された。",
+                "suspicious": True,
+            },
+            {
+                "action": "念のためもう一度、同じ相手へ ping を実行する",
+                "result": "続けて「要求がタイムアウトしました。」と表示された。",
+                "suspicious": True,
+            },
+            {
+                "action": "隣の生徒のPCで同じ ping を試させてもらう",
+                "result": "そのPCでは「応答時間 1ms」など、正常な応答が返ってきた。",
+                "suspicious": False,
+            },
+            {
+                "action": "ブラウザの起動時間を計測する",
+                "result": "起動に3秒ほどかかったが、通信の問題とは考えにくい。",
+                "suspicious": False,
+            },
+            {
+                "action": "キーボードの反応を確認する",
+                "result": "わずかに遅く感じるが、通信とは無関係と考えられる。",
+                "suspicious": False,
+            },
         ],
-        "correct": {1, 2},
-        "prompt": "この中から、LAN内（ルーターまでの区間）に問題があると判断できる結果をすべて選びなさい。",
-        "reasoning_prompt": "ping の応答結果から、どこまで通信が届いていて、どこから先が届いていないと考えられるか説明しなさい。",
+        "prompt": "この中から、LAN内（自分の端末からルーターまでの区間）に問題があると判断できる結果をすべて選びなさい。",
+        "reasoning_prompt": "ping の応答結果から、通信はどこまで届いていて、どこから先が届いていないと考えられるか説明しなさい。",
         "explain": (
-            "デフォルトゲートウェイへの ping が失敗する場合、自分の端末からLANの出口（ルーター）"
-            "までの区間に問題がある可能性が高い。正常な応答（応答時間が表示される状態）と比較して"
-            "判断することが重要である。"
+            "ping はICMPというプロトコルを使い、相手に「エコー要求」を送って「エコー応答」が"
+            "返ってくるかを確認する、もっとも基本的な疎通確認コマンドである。デフォルトゲートウェイ"
+            "（自分のLANの出口であるルーター）への ping が1回だけでなく繰り返し失敗している場合、"
+            "たまたまの通信の揺らぎではなく、その端末からルーターまでの経路に継続的な問題が"
+            "あると判断できる。一方、同じネットワーク内の別のPCからは正常に応答が返ってきていることから、"
+            "ルーター自体や配線全体ではなく、その1台の端末に関わる部分（NIC、ケーブル、"
+            "つながっているポートなど）に原因が絞り込める。このように「他の端末と比較する」ことは、"
+            "問題を個体差なのか全体障害なのか切り分けるうえで欠かせない探偵の技術である。"
         ),
     },
     {
         "no": "④",
         "title": "インターネット境界の問題",
         "scene": (
-            "別の生徒のパソコンでは、ルーターへの ping は成功した。次に、外部のIPアドレス"
-            "（8.8.8.8 など）に対して ping を実行し、結果を比較した。"
+            "別の生徒のパソコンでは、ルーターへの ping は成功した。今度は学校の外、"
+            "つまりインターネットとの境界を調べてみよう。"
         ),
         "clues": [
-            "8.8.8.8 への ping で応答が返ってきた",
-            "8.8.8.8 への ping がすべてタイムアウトした",
-            "同じ時間帯に、他の教室のパソコンも外部サイトに接続できないと報告があった",
-            "ノートパソコンのバッテリー残量が20%だった",
-            "USBメモリが正しく認識されている",
+            {
+                "action": "外部IPアドレス 8.8.8.8 へ ping を実行する",
+                "result": "「要求がタイムアウトしました。」が繰り返し表示された。",
+                "suspicious": True,
+            },
+            {
+                "action": "デフォルトゲートウェイへ ping を再確認する",
+                "result": "「応答時間 1ms」など、正常な応答が返ってきた。",
+                "suspicious": False,
+            },
+            {
+                "action": "職員室に他の教室の状況を問い合わせる",
+                "result": "複数の教室から、同じ時間帯に外部サイトへ接続できないとの報告があった。",
+                "suspicious": True,
+            },
+            {
+                "action": "ノートPCのバッテリー残量を確認する",
+                "result": "残量は20%だった。通信状態には関係がない。",
+                "suspicious": False,
+            },
+            {
+                "action": "USBメモリの認識状況を確認する",
+                "result": "正しく認識されており、特に問題は見られない。",
+                "suspicious": False,
+            },
         ],
-        "correct": {1, 2},
         "prompt": "この中から、インターネットとの境界（学校の外側）に問題があると考えられる根拠をすべて選びなさい。",
         "reasoning_prompt": "「他の教室でも同様の症状が出ている」という情報は、原因の切り分けにどう役立つか説明しなさい。",
         "explain": (
-            "ルーターまでは届くのに外部IPへの ping が失敗する場合、学校とインターネットの境界"
-            "（回線やプロバイダ側）に問題がある可能性が高い。複数の教室で同時に同じ症状が"
-            "出ている場合は、個々の端末ではなく、より上流の設備に原因があると推測できる。"
+            "ルーターまでの ping は成功しているため、LAN内部の疎通には問題がないことが分かる。"
+            "その先の外部IPアドレス（8.8.8.8はGoogleが公開しているDNSサーバーで、疎通確認によく"
+            "使われる）への ping が失敗している場合、学校とインターネットを結ぶ回線や、"
+            "契約しているプロバイダ側の設備に問題がある可能性が高い。ここで重要な手がかりが"
+            "「複数の教室で同時に同じ症状が出ている」という情報である。もし1台の端末だけの問題"
+            "であれば、その端末のケーブルやNICを疑うべきだが、広い範囲で同時多発的に発生している"
+            "場合は、個々の端末ではなく、より上流（学校全体が共有している回線や機器）に原因が"
+            "あると推測できる。このように「影響範囲の広さ」を確認することは、ハード・ソフトの"
+            "切り分けと並んで、原因を特定する上で非常に重要な視点である。"
         ),
     },
     {
@@ -169,25 +294,52 @@ DETECTIVE_STAGES = [
         "title": "名前解決とサービスの問題",
         "scene": (
             "8.8.8.8 への ping は成功するのに、ブラウザで www.example.co.jp を開こうとすると"
-            "「このサイトにアクセスできません」と表示される生徒がいた。"
+            "「このサイトにアクセスできません」と表示される生徒がいた。最後の調査に入ろう。"
         ),
         "clues": [
-            "8.8.8.8 への ping は正常に応答が返ってくる",
-            "www.example.co.jp への ping が名前解決エラーで失敗する",
-            "別のブラウザで同じサイトを開いても同じエラーが出る",
-            "壁紙の色が薄い",
-            "特定の1サイトだけがどのブラウザでも開けず、他のサイトは問題なく見られる",
+            {
+                "action": "8.8.8.8 へ ping を実行する",
+                "result": "正常に応答が返ってくる。",
+                "suspicious": False,
+            },
+            {
+                "action": "www.example.co.jp へ ping を実行する",
+                "result": "「名前を解決できません」というエラーが表示され、IPアドレスに変換できなかった。",
+                "suspicious": True,
+            },
+            {
+                "action": "別のブラウザで同じサイトを開いてみる",
+                "result": "別のブラウザでも同じアクセスエラーが表示された。",
+                "suspicious": True,
+            },
+            {
+                "action": "デスクトップの壁紙の色を確認する",
+                "result": "特に変化は見られない。",
+                "suspicious": False,
+            },
+            {
+                "action": "他のWebサイトに複数アクセスできるか確認する",
+                "result": "他のサイトはどれも問題なく開くことができた。",
+                "suspicious": True,
+            },
         ],
-        "correct": {1, 2, 4},
         "prompt": "この中から、DNS（名前解決）またはサイト側の問題を疑う根拠として適切なものをすべて選びなさい。",
         "reasoning_prompt": (
             "「数字（IPアドレス）では通信できるがサイト名では失敗する」ことと、"
-            "「特定の1サイトだけが開けない」ことは、それぞれ何が原因だと考えられるか、分けて説明しなさい。"
+            "「特定の1サイトだけが開けず、他のサイトは開ける」ことは、それぞれ何が原因だと考えられるか、分けて説明しなさい。"
         ),
         "explain": (
-            "数字のIPアドレスへの通信が成功するのに、名前（URL）を使った通信だけが失敗する場合は、"
-            "URLをIPアドレスに変換する「DNS」に問題があると考えられる。一方、特定のサイトだけが"
-            "どの端末・ブラウザからも開けない場合は、DNSではなく相手サーバー側の障害である可能性が高い。"
+            "DNS（Domain Name System）は、人間が覚えやすい「ドメイン名（例：www.example.co.jp）」を、"
+            "コンピュータが通信に使う「IPアドレス」に変換する仕組みである。8.8.8.8という数字への"
+            "ping は成功するのに、ドメイン名への ping だけが名前解決エラーになる場合、"
+            "ネットワークそのものは生きているが、名前をIPアドレスへ変換する機能（DNSサーバーへの"
+            "問い合わせ）がうまく働いていないと判断できる。これはPC側のDNS設定の誤りや、"
+            "学校が使っているDNSサーバーの不調が原因として考えられる。一方で、"
+            "「特定の1サイトだけがどのブラウザでも開けず、他のサイトは正常」という場合は、"
+            "自分たちのネットワークではなく、相手側のWebサーバーがダウンしている、"
+            "あるいはメンテナンス中である可能性が高く、こちら側で対処できる範囲を超えている。"
+            "このように症状の「範囲」（全サイトがダメなのか、特定の1サイトだけなのか）を"
+            "見極めることが、DNSの問題と相手サーバーの問題を切り分ける決め手になる。"
         ),
     },
 ]
@@ -200,10 +352,23 @@ STAGE6_QUESTIONS = [
     "通信が使えない状況を想定して、平常時から準備しておくべきことを一つ提案しなさい。",
 ]
 
+STAGE6_EXPLAIN = (
+    "①〜⑤で行った切り分けは、あくまで「一部の端末や設備の不具合」を前提にした手法であり、"
+    "基地局そのものや広域の回線が物理的に損壊するような大規模災害時には、そもそも調査対象の"
+    "ネットワーク自体が丸ごと失われてしまうため、通用しないことが多い。実際の大規模通信障害では、"
+    "音声通話の輻輳（同時に集中してつながりにくくなる現象）、SNSやメールなど個別サービスの"
+    "障害、そして避難情報や安否確認手段の喪失といった問題が同時に発生する。"
+    "そのため、学校や地域では、防災行政無線・ラジオ・紙の掲示・地域の連絡網など、"
+    "通信インフラに依存しない代替の情報伝達手段をあらかじめ整えておくことが重要である。"
+    "また、家族との集合場所を事前に決めておく、災害用伝言ダイヤル（171）の使い方を"
+    "知っておくといった個人レベルの備えも、通信が使えない状況下では大きな意味を持つ。"
+)
+
 # ------------------------------------------------------------------
-# データ定義：RPG編
-# 各階層で、複数のアイテム（道具・コマンド）の中から必要なものを選んで装備し、
-# 魔物に立ち向かう。正解は階層ごとに複数個、他の階層のアイテムがダミーとして混ざる。
+# データ定義：RPG編（ターン制バトル）
+# 各階層で、正しいアイテムを選んで「攻撃」すると魔物にダメージが入り、
+# 誤ったアイテムを使うと反撃を受けてしまう。すべての正解アイテムを
+# 使い切ると魔物を倒せる、体験型のバトルにする。
 # ------------------------------------------------------------------
 ALL_ITEMS = {
     "cable_check": "LANケーブル差し込みチェッカー（ケーブルが根元まで刺さっているか確認する）",
@@ -233,6 +398,15 @@ RPG_STAGES = [
         ),
         "item_pool": ["cable_check", "lamp_check", "ipconfig_scroll", "ping_wand", "browser_shield"],
         "correct": {"cable_check", "lamp_check"},
+        "explain": (
+            "物理層は、ケーブルや電波など「モノ」として存在する通信経路を扱う、OSI参照モデルの"
+            "最下層である。ここでの障害は目に見える形で現れることが多く、ソフトウェアの設定を"
+            "いくら調べても解決しない点が特徴である。LANケーブル差し込みチェッカーで挿し込みを"
+            "確認し、電源ランプ確認ミラーでハブやルーターへの通電状態を確認することが、"
+            "もっとも基本的かつ確実な対処法となる。ipconfigやpingはこの層より上（ネットワーク層）"
+            "のトラブルに使う道具であり、そもそも物理的な接続ができていない状態では実行しても"
+            "無意味な結果しか得られない。"
+        ),
     },
     {
         "layer": "第2層",
@@ -241,6 +415,16 @@ RPG_STAGES = [
         "monster": "🔁 無限増殖のループ：配線を輪のようにつないでしまい、ネットワーク全体をパニックに陥らせる。",
         "item_pool": ["port_watch", "cable_reconnect", "dns_bell", "netconn_bow", "firewall_key"],
         "correct": {"port_watch", "cable_reconnect"},
+        "explain": (
+            "データリンク層は、隣り合う機器同士がMACアドレスという固有の番号を頼りにデータを"
+            "やり取りする層である。ここで起こりやすいのが「ネットワークループ」で、ケーブルを"
+            "誤って輪のようにつないでしまうと、データが同じ経路をぐるぐると回り続け、"
+            "ネットワーク全体の帯域を消費してしまう（ブロードキャストストームと呼ばれる現象）。"
+            "ハブの全ポートが同時に激しく点滅している場合はループの合図であり、ポート点滅観察の"
+            "めがねで異常を見抜き、ケーブルを一本ずつ抜き差しして原因のケーブルを特定するのが"
+            "有効な対処法である。DNSやポート開放の道具はこの層より上位の問題に対応するものであり、"
+            "ここでは効果を発揮しない。"
+        ),
     },
     {
         "layer": "第3層",
@@ -255,6 +439,16 @@ RPG_STAGES = [
         ),
         "item_pool": ["ipconfig_scroll", "ping_wand", "port_watch", "dns_bell", "cable_reconnect"],
         "correct": {"ipconfig_scroll", "ping_wand"},
+        "explain": (
+            "ネットワーク層は、IPアドレスという「住所」を頼りに、複数のネットワークをまたいで"
+            "データを目的地まで届ける役割を担う層である。ipconfig /allの巻物を使えば、自分の"
+            "端末に割り当てられているIPアドレスやデフォルトゲートウェイの設定を確認でき、"
+            "設定そのものに誤りがないかをまず見極めることができる。そのうえで、pingの杖を"
+            "「自分→出口（ルーター）→外の世界（8.8.8.8など）」の順に近い相手から遠い相手へと"
+            "段階的に使うことで、通信がどこまで届いていて、どこから先で止まっているのかを"
+            "正確に切り分けられる。この『近い順に確認する』という考え方は、ネットワーク層の"
+            "トラブルシューティングにおいて最も基本的な戦略である。"
+        ),
     },
     {
         "layer": "第4層",
@@ -266,6 +460,16 @@ RPG_STAGES = [
         "monster": "🚧 封鎖された裏門：特定のアプリだけが使うポート（扉）がファイアウォールなどで閉じられている。",
         "item_pool": ["netconn_bow", "firewall_key", "ipconfig_scroll", "browser_shield", "cable_check"],
         "correct": {"netconn_bow", "firewall_key"},
+        "explain": (
+            "トランスポート層は、TCPやUDPといったプロトコルを使い、アプリケーションごとに"
+            "「ポート番号」という扉を使い分けて通信の信頼性を確保する層である。ネットワーク層の"
+            "ping（第3層）は正常に通るのに、特定のアプリやサービスだけがつながらない場合、"
+            "そのアプリが使うポートがファイアウォールなどによって閉じられている可能性が高い。"
+            "Test-NetConnectionの弓を使えば、対象のポート番号が開いているかどうかを遠くから"
+            "確認でき、ファイアウォール確認の鍵を使えば、閉じている扉を見つけて設定を見直す"
+            "ことができる。物理的な接続やIPアドレスの確認（ケーブルチェッカーやipconfig）は"
+            "すでに問題なしと分かっている段階なので、ここでは効果を発揮しない。"
+        ),
     },
     {
         "layer": "第5〜7層",
@@ -281,8 +485,22 @@ RPG_STAGES = [
         ),
         "item_pool": ["dns_bell", "browser_shield", "server_crystal", "ping_wand", "cable_check"],
         "correct": {"dns_bell", "browser_shield", "server_crystal"},
+        "explain": (
+            "セッション層・プレゼンテーション層・アプリケーション層は、私たちが日常的に触れる"
+            "アプリやブラウザに近い、最も『上位』の層である。数字（IPアドレス）では通信できるのに"
+            "サイト名では失敗する場合はDNSの鈴でドメイン名の解決状況を確認し、ブラウザやOSの"
+            "不具合・古さが疑われる場合はブラウザ・OS更新の盾で対策する。また、特定の1サイトだけが"
+            "誰から見ても開けない場合は、サーバー状況確認の水晶を使い、相手のサーバー自体が"
+            "ダウンしていないかを確認する必要がある。この層のトラブルは原因が三者三様（自分の"
+            "端末、通信経路、相手のサーバー）に分かれるため、より下位の層（第1〜4層）で"
+            "問題がないことを確認したうえで、最後に切り分けるべき領域だと言える。"
+        ),
     },
 ]
+
+MONSTER_HP_PER_ITEM = 50
+PLAYER_MAX_HP = 100
+WRONG_ITEM_DAMAGE = 20
 
 # ------------------------------------------------------------------
 # セッション状態
@@ -297,7 +515,6 @@ def init_state():
     ss.setdefault("det_feedback", None)
     ss.setdefault("rpg_stage", 0)
     ss.setdefault("rpg_cleared", [False] * len(RPG_STAGES))
-    ss.setdefault("rpg_feedback", None)
 
 
 init_state()
@@ -316,19 +533,19 @@ def show_home():
     st.markdown('<div class="big-title">🛰️ 通信トラブル解決クエスト</div>', unsafe_allow_html=True)
     st.write(
         "身近な場所から遠い場所へ、ハードからソフトへ。通信トラブルの原因を「探偵」として"
-        "証拠から推理したり、「勇者」としてOSI参照モデルの各層に潜む問題に立ち向かったりしよう。"
+        "自分の手で調査し、「勇者」としてOSI参照モデルの各層に潜む魔物と実際に戦ってみよう。"
     )
     st.write("")
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("### 🔍 探偵編")
-        st.write("現場に残された手がかりの中から怪しいものを選び出し、根拠を記述して原因を推理する。")
+        st.write("現場で1つずつ調査を実行し、集まった手がかりから怪しいものを選んで根拠を記述する。")
         if st.button("探偵編をはじめる", use_container_width=True):
             st.session_state.mode = "detective"
             st.rerun()
     with col2:
         st.markdown("### ⚔️ RPG編")
-        st.write("OSI参照モデルの7階層に潜む魔物に対し、正しい道具を装備してから立ち向かう。")
+        st.write("道具を選んで一手ずつ攻撃するターン制バトルで、OSI参照モデルの魔物に立ち向かう。")
         if st.button("RPG編をはじめる", use_container_width=True):
             st.session_state.mode = "rpg"
             st.rerun()
@@ -366,39 +583,65 @@ def show_detective():
         st.subheader(f"ステージ{stage['no']}　{stage['title']}")
         st.markdown(f'<div class="scene-box">{stage["scene"]}</div>', unsafe_allow_html=True)
 
-        st.write(f"**{stage['prompt']}**")
-        selected = set()
-        for i, clue in enumerate(stage["clues"]):
-            key = f"det_clue_{stage_idx}_{i}"
-            checked = st.checkbox(clue, key=key)
-            if checked:
-                selected.add(i)
+        st.write("**気になる項目を選んで、実際に調べてみよう。**")
 
+        revealed_key = f"det_revealed_{stage_idx}"
+        ss.setdefault(revealed_key, set())
+        judged_key = f"det_judged_{stage_idx}"
+        ss.setdefault(judged_key, set())
+
+        for i, clue in enumerate(stage["clues"]):
+            with st.container():
+                cols = st.columns([3, 1])
+                with cols[0]:
+                    st.write(f"手がかり{i + 1}：{clue['action']}")
+                with cols[1]:
+                    if i not in ss[revealed_key]:
+                        if st.button("調べる", key=f"det_investigate_{stage_idx}_{i}"):
+                            ss[revealed_key].add(i)
+                            st.rerun()
+                if i in ss[revealed_key]:
+                    st.markdown(f'<div class="console-box">$ 調査結果 &gt; {clue["result"]}</div>', unsafe_allow_html=True)
+                    checked = st.checkbox(
+                        "この手がかりは怪しいと思う",
+                        key=f"det_suspect_{stage_idx}_{i}",
+                    )
+                    if checked:
+                        ss[judged_key].add(i)
+                    else:
+                        ss[judged_key].discard(i)
+
+        st.write("")
         reasoning = st.text_area(stage["reasoning_prompt"], key=f"det_reason_{stage_idx}")
 
         if st.button("推理を確定する", key=f"det_submit_{stage_idx}"):
-            if not selected:
-                ss.det_feedback = ("warn", "手がかりを少なくとも1つ選んでから確定してね。")
+            if len(ss[revealed_key]) < len(stage["clues"]):
+                ss.det_feedback = ("warn", "確定する前に、すべての手がかりを調べておこう。")
+            elif not ss[judged_key]:
+                ss.det_feedback = ("warn", "手がかりを少なくとも1つ「怪しい」と判断してから確定してね。")
             elif not reasoning.strip():
                 ss.det_feedback = ("warn", "選んだ根拠も記述してから確定しよう。")
-            elif selected == stage["correct"]:
-                ss.det_cleared[stage_idx] = True
-                ss.det_feedback = ("ok", stage["explain"])
             else:
-                missed = stage["correct"] - selected
-                wrong = selected - stage["correct"]
-                msg = "推理はまだ完全ではない。"
-                if wrong:
-                    msg += f"　選んだ中に、通信トラブルとは直接関係のないものが{len(wrong)}件含まれている。"
-                if missed:
-                    msg += f"　見落としている手がかりが{len(missed)}件ある。"
-                msg += "　現場をもう一度よく確認してみよう。"
-                ss.det_feedback = ("ng", msg)
+                correct = {i for i, c in enumerate(stage["clues"]) if c["suspicious"]}
+                if ss[judged_key] == correct:
+                    ss.det_cleared[stage_idx] = True
+                    ss.det_feedback = ("ok", stage["explain"])
+                else:
+                    missed = correct - ss[judged_key]
+                    wrong = ss[judged_key] - correct
+                    msg = "推理はまだ完全ではない。"
+                    if wrong:
+                        msg += f"　選んだ中に、通信トラブルとは直接関係のないものが{len(wrong)}件含まれている。"
+                    if missed:
+                        msg += f"　見落としている手がかりが{len(missed)}件ある。"
+                    msg += "　現場をもう一度よく確認してみよう。"
+                    ss.det_feedback = ("ng", msg)
 
         if ss.det_feedback:
             kind, msg = ss.det_feedback
             if kind == "ok":
-                st.success("解決！ " + msg)
+                st.success("解決！")
+                st.markdown(f'<div class="explain-box">{msg}</div>', unsafe_allow_html=True)
                 if reasoning.strip():
                     st.caption(f"あなたの記述：{reasoning}")
                 if st.button("次のステージへ →"):
@@ -431,12 +674,8 @@ def show_detective():
                 st.warning("すべての設問に記述してから提出しよう。")
 
         if ss.det_stage6_done:
-            st.success(
-                "大規模な通信障害では、個々の端末の切り分けだけでは対処できない範囲の被害が生じる。"
-                "緊急連絡・避難情報の伝達手段が失われることも大きな課題であり、"
-                "ラジオや掲示、地域の連絡網など、通信インフラに依存しない代替手段を"
-                "平常時から把握しておくことが重要である。"
-            )
+            st.success("提出完了。")
+            st.markdown(f'<div class="explain-box">{STAGE6_EXPLAIN}</div>', unsafe_allow_html=True)
             st.info("探偵編、全ステージ解決。お疲れさま。")
 
     st.write("")
@@ -446,8 +685,29 @@ def show_detective():
 
 
 # ------------------------------------------------------------------
-# RPG編
+# RPG編（ターン制バトル）
 # ------------------------------------------------------------------
+def get_combat_state(stage_idx, stage):
+    ss = st.session_state
+    key = f"rpg_combat_{stage_idx}"
+    if key not in ss:
+        ss[key] = {
+            "monster_hp": len(stage["correct"]) * MONSTER_HP_PER_ITEM,
+            "monster_max_hp": len(stage["correct"]) * MONSTER_HP_PER_ITEM,
+            "player_hp": PLAYER_MAX_HP,
+            "used_correct": set(),
+            "log": [f"『{stage['name']}』の魔物が現れた！"],
+            "result": None,  # None / "win" / "lose"
+        }
+    return ss[key]
+
+
+def reset_combat(stage_idx, stage):
+    key = f"rpg_combat_{stage_idx}"
+    st.session_state.pop(key, None)
+    get_combat_state(stage_idx, stage)
+
+
 def show_rpg():
     ss = st.session_state
     st.markdown('<div class="big-title">⚔️ RPG編：OSI参照モデルの魔物たち</div>', unsafe_allow_html=True)
@@ -463,6 +723,8 @@ def show_rpg():
 
     if stage_idx < len(RPG_STAGES):
         stage = RPG_STAGES[stage_idx]
+        combat = get_combat_state(stage_idx, stage)
+
         st.subheader(f"{stage['layer']}　{stage['name']}")
         st.markdown(f'<div class="scene-box">{stage["story"]}</div>', unsafe_allow_html=True)
         st.markdown(
@@ -470,47 +732,63 @@ def show_rpg():
             unsafe_allow_html=True,
         )
 
-        st.write("**戦いに出る前に、道具倉庫から必要なアイテムを装備しよう。**")
-        st.caption("この階層の魔物に効くアイテムを、必要な数だけ選んでチェックを入れること。他の階層用のアイテムも紛れている。")
+        # HPバー
+        st.write(f"魔物のHP：{max(combat['monster_hp'], 0)} / {combat['monster_max_hp']}")
+        st.progress(max(combat["monster_hp"], 0) / combat["monster_max_hp"])
+        st.write(f"あなたのHP：{max(combat['player_hp'], 0)} / {PLAYER_MAX_HP}")
+        st.progress(max(combat["player_hp"], 0) / PLAYER_MAX_HP)
 
-        equipped = set()
-        for item_id in stage["item_pool"]:
-            label = ALL_ITEMS[item_id]
-            key = f"rpg_item_{stage_idx}_{item_id}"
-            checked = st.checkbox(label, key=key)
-            if checked:
-                equipped.add(item_id)
+        st.markdown(f'<div class="battle-log">{chr(10).join(combat["log"][-8:])}</div>', unsafe_allow_html=True)
 
-        if st.button("装備してたたかう！", key=f"rpg_submit_{stage_idx}"):
-            if not equipped:
-                ss.rpg_feedback = ("warn", "アイテムを1つ以上装備してから挑もう。")
-            elif equipped == stage["correct"]:
-                ss.rpg_cleared[stage_idx] = True
-                ss.rpg_feedback = ("ok", None)
-            else:
-                missed = stage["correct"] - equipped
-                wrong = equipped - stage["correct"]
-                msg = "攻撃が決めきれず、魔物を取り逃してしまった。"
-                if wrong:
-                    msg += f"　装備の中に、この階層では効果のないアイテムが{len(wrong)}個ある。"
-                if missed:
-                    msg += f"　あと{len(missed)}個、必要な装備が足りていない。"
-                msg += "　もう一度、道具倉庫を見直してみよう。"
-                ss.rpg_feedback = ("ng", msg)
+        if combat["result"] is None:
+            st.write("**道具倉庫からアイテムを選んで攻撃しよう。**")
+            st.caption("正しいアイテムはダメージを与えられるが、この階層に合わないアイテムは反撃を受けてしまう。")
 
-        if ss.rpg_feedback:
-            kind, msg = ss.rpg_feedback
-            if kind == "ok":
-                st.success("魔物をたおした！")
-                st.markdown(f'<div class="item-box">{stage_explain(stage)}</div>', unsafe_allow_html=True)
-                if st.button("次の階層へ →"):
-                    ss.rpg_stage += 1
-                    ss.rpg_feedback = None
-                    st.rerun()
-            elif kind == "ng":
-                st.error(msg)
-            else:
-                st.warning(msg)
+            for item_id in stage["item_pool"]:
+                label = ALL_ITEMS[item_id]
+                is_used_correct = item_id in combat["used_correct"] and item_id in stage["correct"]
+                cols = st.columns([4, 1])
+                with cols[0]:
+                    st.write(label)
+                with cols[1]:
+                    if is_used_correct:
+                        st.write("✅ 使用済み")
+                    else:
+                        if st.button("攻撃", key=f"rpg_attack_{stage_idx}_{item_id}"):
+                            item_name = label.split("（")[0]
+                            if item_id in stage["correct"]:
+                                combat["used_correct"].add(item_id)
+                                combat["monster_hp"] -= MONSTER_HP_PER_ITEM
+                                combat["log"].append(f"→「{item_name}」で攻撃！ 魔物に効果的だった。")
+                                if combat["monster_hp"] <= 0:
+                                    combat["result"] = "win"
+                                    combat["log"].append("魔物を倒した！")
+                            else:
+                                combat["player_hp"] -= WRONG_ITEM_DAMAGE
+                                combat["log"].append(f"→「{item_name}」で攻撃！ しかし効果がなく、反撃を受けた。")
+                                if combat["player_hp"] <= 0:
+                                    combat["result"] = "lose"
+                                    combat["log"].append("力尽きてしまった…")
+                            st.rerun()
+
+            st.write("")
+            if st.button("⚑ この階層をあきらめて装備を見直す", key=f"rpg_giveup_{stage_idx}"):
+                reset_combat(stage_idx, stage)
+                st.rerun()
+
+        elif combat["result"] == "win":
+            ss.rpg_cleared[stage_idx] = True
+            st.success("勝利！ 魔物をたおした。")
+            st.markdown(f'<div class="explain-box">{stage["explain"]}</div>', unsafe_allow_html=True)
+            if st.button("次の階層へ →"):
+                ss.rpg_stage += 1
+                st.rerun()
+
+        else:  # lose
+            st.error("敗北してしまった。装備を見直して、もう一度挑もう。")
+            if st.button("もう一度挑戦する"):
+                reset_combat(stage_idx, stage)
+                st.rerun()
     else:
         st.success("すべての階層の魔物をたおした。通信トラブルに立ち向かう知識と装備が身についたはずだ。")
 
@@ -518,11 +796,6 @@ def show_rpg():
     if st.button("⬅ ホームに戻る", key="rpg_home"):
         ss.mode = None
         st.rerun()
-
-
-def stage_explain(stage):
-    items_text = "、".join(ALL_ITEMS[i].split("（")[0] for i in sorted(stage["correct"]))
-    return f"有効だった装備：{items_text}。この階層のトラブルには、これらの道具・コマンドが対応している。"
 
 
 # ------------------------------------------------------------------
